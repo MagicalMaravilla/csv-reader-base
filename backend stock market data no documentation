@@ -1,0 +1,137 @@
+import csv
+from datetime import datetime
+
+class MarketData:
+    def __init__(self, date, open_price, high, low, close, adj_close, volume):
+        try:
+            self.date = datetime.strptime(date, '%Y-%m-%d')
+        except ValueError:
+            print(f"Invalid date format: {date}")
+            self.date = None  # Or handle it in a way that fits the applications logic
+
+        try:
+            self.open_price = float(open_price)
+            self.high = float(high)
+            self.low = float(low)
+            self.close = float(close)
+            self.adj_close = float(adj_close)
+            self.volume = int(volume)
+        except ValueError as e:
+            print(f"Data conversion error: {e}")
+            # Handle or set defaults
+
+    def get_daily_change(self):
+        return self.close - self.open_price
+
+    def get_daily_percentage_change(self):
+        if self.open_price == 0:
+            return None # Avoid division by zero
+        return((self.close - self.open_price) / self.open_price) * 100
+
+
+
+    # Methods will be implemented here.
+
+def read_csv(file_path):
+    market_data_list = []
+    try:
+        with open(file_path, 'r') as file:
+            csv_reader = csv.reader(file)
+            next(csv_reader)  # Skip header row
+            for row in csv_reader:
+                try:
+                    if len(row) != 7:  # Ensure row has the correct number of columns
+                        raise ValueError(f"Row has incorrect number of columns: {row}")
+
+                    data = MarketData(*row)
+                    market_data_list.append(data)
+                except ValueError as e:
+                    print(f"Data format error in row {row}: {e}")
+                except Exception as e:
+                    print(f"Unexpected error in row {row}: {e}")
+    except FileNotFoundError:
+        print(f"Error: File not found - {file_path}")
+    except Exception as e:
+        print(f"An error occurred while reading the file: {e}")
+
+    return market_data_list
+
+class FinancialAnalysis:
+    @staticmethod
+    def calculate_moving_average(data, period):
+        if not data or period <= 0:
+            print("Invalid data or period for moving average calculation.")
+            return None
+
+        moving_averages = []
+        for i in range(len(data) - period + 1):
+            window = data[i:i + period]
+            window_average = sum(d.adj_close for d in window) / period
+            moving_averages.append(window_average)
+
+
+        return moving_averages
+
+    @staticmethod
+    def compare_market_data(data_set1, data_set2):
+        # Check if the first dataset is empty or has zero total adjusted close value
+        if len(data_set1) == 0 or sum(d.adj_close for d in data_set1) == 0:
+            return None  # Cannot perform comparison due to insufficient data
+
+        # Calculate averages for both datasets
+        average1 = sum(d.adj_close for d in data_set1) / len(data_set1)
+        average2 = sum(d.adj_close for d in data_set2) / len(data_set2)
+
+        # Calculate and return the percentage change
+        percentage_change = ((average2 - average1) / average1) * 100
+        return percentage_change
+
+    @staticmethod
+    def calculate_ema(data, period):
+        if len(data) < period or period <= 0:
+            return None
+
+        emas = []
+        multiplier = 2 / (period + 1)
+        ema_previous = sum(d.adj_close for d in data[:period]) / period
+
+        for i in range(period, len(data)):
+            ema = (data[i].adj_close - ema_previous) * multiplier + ema_previous
+            emas.append(ema)
+            ema_previous = ema
+
+        return emas
+
+    @staticmethod
+    def calculate_volatility(data, period):
+        if len(data) < period or period <= 1:
+            return None
+
+        mean = sum(d.adj_close for d in data[-period:]) / (period - 1)
+        variance = sum((d.adj_close - mean) ** 2 for d in data[-period:]) / (period - 1)
+        return variance ** 0.5 # Square root of variance
+
+class BackendInterface:
+    def __init__(self):
+        self.market_data = None
+
+    def load_data_from_file(self, file_path):
+        self.market_data = read_csv(file_path)
+
+    def perform_analysis(self, analysis_type, *args):
+        if not self.market_data:
+            print("No market data loaded.")
+            return None
+
+        try:
+            if analysis_type == 'moving_average':
+                return FinancialAnalysis.calculate_moving_average(self.market_data, *args)
+            elif analysis_type == 'compare_data':
+                return FinancialAnalysis.compare_market_data(*args)
+            # Add handling for other analysis types
+            else:
+                print(f"Unknown analysis type: {analysis_type}")
+                return None
+        except Exception as e:
+            print(f"An error occurred during analysis: {e}")
+            return None
