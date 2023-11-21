@@ -1,0 +1,134 @@
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from backend_market_data import BackendInterface
+import threading
+from datetime import datetime
+
+class MarketDataGUI:
+    def __init__(self, root):
+        self.root = root
+        root.title("Market Data Upload")
+
+        # Variables to hold file paths
+        self.file1_path = None
+        self.file2_path = None
+
+        # Upload buttons and labels for file paths
+        tk.Button(root, text="Upload File 1", command=lambda: self.load_file(1)).pack()
+        self.file1_label = tk.Label(root, text="No file selected")
+        self.file1_label.pack()
+
+        tk.Button(root, text="Upload File 2", command=lambda: self.load_file(2)).pack()
+        self.file2_label = tk.Label(root, text="No file selected")
+        self.file2_label.pack()
+
+        # Proceed to Analysis button
+        tk.Button(root, text="Proceed to Analysis", command=self.open_analysis_window).pack()
+
+    def load_file(self, file_number):
+        file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
+        if file_path:
+            if file_number == 1:
+                self.file1_path = file_path
+                self.file1_label.config(text=f"File 1: {file_path.split('/')[-1]}")
+            elif file_number == 2:
+                self.file2_path = file_path
+                self.file2_label.config(text=f"File 2: {file_path.split('/')[-1]}")
+
+    def open_analysis_window(self):
+        if not self.file1_path or not self.file2_path:
+            messagebox.showerror("Error", "Please upload both files before proceeding.")
+            return
+
+        # Close the current window
+        self.root.destroy()
+
+        # Open new window for analysis
+        analysis_root = tk.Tk()
+        analysis_root.title("Analysis Options")
+        AnalysisWindow(analysis_root, self.file1_path, self.file2_path)
+
+
+class AnalysisWindow:
+    def __init__(self, root, file1_path, file2_path):
+        self.root = root
+        self.backend1 = BackendInterface()
+        self.backend2 = BackendInterface()
+        self.backend1.load_data_from_file(file1_path)
+        self.backend2.load_data_from_file(file2_path)
+
+        # Date range inputs
+        tk.Label(root, text="Start Date (YYYY-MM-DD):").pack()
+        self.start_date_entry = tk.Entry(root)
+        self.start_date_entry.pack()
+
+        tk.Label(root, text="End Date (YYYY-MM-DD):").pack()
+        self.end_date_entry = tk.Entry(root)
+        self.end_date_entry.pack()
+
+        # Analysis buttons for each stock
+        tk.Button(root, text="Calculate Moving Average for Stock 1",
+                  command=lambda: self._async_analysis('moving_average', 1)).pack()
+        tk.Button(root, text="Calculate Moving Average for Stock 2",
+                  command=lambda: self._async_analysis('moving_average', 2)).pack()
+
+        # ... Add more buttons for other types of analysis
+
+        # Result Display
+        self.result_text = tk.Text(root, height=10, width=50)
+        self.result_text.pack()
+
+    def _async_analysis(self, analysis_type, stock_number):
+        # safely get values in the main thread
+        start_date_str = self.start_date_entry.get()
+        end_date_str = self.end_date_entry.get()
+
+        try:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+        except ValueError as e:
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Date format error: {e}"))
+            return
+
+        backend = self.backend1 if stock_number == 1 else self.backend2
+
+        try:
+            # Perform the analysis here
+            if analysis_type == 'moving_average':
+                period = 5  # Modify as needed
+                result = self.perform_moving_average_analysis(backend, start_date, end_date, period)
+            # Add elif blocks here for other types of analysis
+
+            # Schedule the result display to run in the main thread
+            self.root.after(0, lambda: self.display_result(result))
+
+        except Exception as e:
+            self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
+
+    def perform_moving_average_analysis(self, backend, start_date, end_date, period):
+        # Filter data based on the date range
+        filtered_data = [data for data in backend.market_data if start_date <= data.date <= end_date]
+        # Call the backend method to calculate the moving average
+        return backend.perform_analysis('moving_average', filtered_data, period)
+
+    def validate_dates(self) -> bool:
+        try:
+            datetime.strptime(self.start_date_entry.get(), '%Y-%m-%d')
+            datetime.strptime(self.end_date_entry.get(), '%Y-%m-%d')
+            return True
+        except ValueError:
+            messagebox.showerror("Error", "Invalid date format. Please use YYYY-MM-DD.")
+            return False
+
+    def display_result(self, result):
+        # Ensure this method runs in the main thread
+        self.result_text.delete('1.0', tk.END)
+        if result is not None:
+            self.result_text.insert(tk.END, str(result))
+        else:
+            self.result_text.insert(tk.END, "No result or invalid analysis type")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = MarketDataGUI(root)
+    root.mainloop()
